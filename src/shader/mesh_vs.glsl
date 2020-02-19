@@ -4,10 +4,9 @@
 
 layout(location = 0) in vec3 VS_IN_Position;
 layout(location = 1) in vec2 VS_IN_UV;
-layout(location = 2) in vec2 VS_IN_LightmapUV;
-layout(location = 3) in vec3 VS_IN_Normal;
-layout(location = 4) in vec3 VS_IN_Tangent;
-layout(location = 5) in vec3 VS_IN_Bitangent;
+layout(location = 2) in vec3 VS_IN_Normal;
+layout(location = 3) in vec3 VS_IN_Tangent;
+layout(location = 4) in vec3 VS_IN_Bitangent;
 
 // ------------------------------------------------------------------
 // OUTPUT VARIABLES -------------------------------------------------
@@ -16,7 +15,6 @@ layout(location = 5) in vec3 VS_IN_Bitangent;
 out vec3 FS_IN_WorldPos;
 out vec3 FS_IN_Normal;
 out vec2 FS_IN_UV;
-out vec2 FS_IN_LightmapUV;
 out vec4 FS_IN_NDCFragPos;
 
 // ------------------------------------------------------------------
@@ -42,7 +40,6 @@ void main()
     FS_IN_WorldPos   = world_pos.xyz;
     FS_IN_Normal     = normalize(normalize(mat3(u_Model) * VS_IN_Normal));
     FS_IN_UV         = VS_IN_UV;
-    FS_IN_LightmapUV = VS_IN_LightmapUV;
     FS_IN_NDCFragPos = view_proj * world_pos;
 
     gl_Position = FS_IN_NDCFragPos;

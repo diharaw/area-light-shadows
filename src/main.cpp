@@ -1,4 +1,5 @@
 #define _USE_MATH_DEFINES
+#include <ogl.h>
 #include <application.h>
 #include <mesh.h>
 #include <camera.h>
@@ -11,7 +12,7 @@
 #include <random>
 
 #undef min
-#define CAMERA_FAR_PLANE 200.0f
+#define CAMERA_FAR_PLANE 300.0f
 #define DEBUG_CAMERA_FAR_PLANE 10000.0f
 #define SHADOW_MAP_SIZE 1024
 #define LIGHT_FAR_PLANE 650.0f
@@ -35,7 +36,7 @@ protected:
     bool init(int argc, const char* argv[]) override
     {
         m_light_target              = glm::vec3(0.0f);
-        glm::vec3 default_light_dir = glm::normalize(glm::vec3(0.0f, 0.9770f, 0.5000f));
+        glm::vec3 default_light_dir = glm::normalize(glm::vec3(-0.5000f, 0.9770f, 0.5000f));
         m_light_direction           = -default_light_dir;
         m_light_color               = glm::vec3(10000.0f);
 
@@ -56,8 +57,11 @@ protected:
         create_camera();
 
         m_transform = glm::mat4(1.0f);
-        m_transform = glm::scale(m_transform, glm::vec3(10.0f));
+        m_transform = glm::scale(m_transform, glm::vec3(0.1f));
         m_transform = glm::rotate(m_transform, glm::radians(45.0f), glm::vec3(0.0, 1.0f, 0.0f));
+
+        m_plane_transform = glm::mat4(1.0f);
+        m_plane_transform = glm::scale(m_plane_transform, glm::vec3(0.4f));
 
         return true;
     }
@@ -79,7 +83,6 @@ protected:
 
     void shutdown() override
     {
-        dw::Mesh::unload(m_mesh);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -172,12 +175,11 @@ protected:
     // -----------------------------------------------------------------------------------------------------------------------------------
 
 private:
-
     // -----------------------------------------------------------------------------------------------------------------------------------
 
     void render_lit_scene()
     {
-        render_scene(nullptr, m_mesh_program, 0, 0, m_width, m_height, GL_BACK);
+        render_scene(nullptr, m_mesh_program, 0, 0, m_width, m_height, GL_NONE);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -204,6 +206,7 @@ private:
 
         // Draw scene.
         render_mesh(m_mesh, m_transform, m_shadow_map_program, glm::vec3(0.5f));
+        render_mesh(m_plane, m_plane_transform, m_shadow_map_program, glm::vec3(0.5f));
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -212,10 +215,10 @@ private:
     {
         {
             // Create general shaders
-            m_mesh_vs                = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/mesh_vs.glsl"));
-            m_shadow_map_vs          = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_VERTEX_SHADER, "shader/shadow_map_vs.glsl"));
-            m_mesh_fs                = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/mesh_fs.glsl"));
-            m_depth_fs               = std::unique_ptr<dw::Shader>(dw::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/depth_fs.glsl"));
+            m_mesh_vs       = std::unique_ptr<dw::gl::Shader>(dw::gl::Shader::create_from_file(GL_VERTEX_SHADER, "shader/mesh_vs.glsl"));
+            m_shadow_map_vs = std::unique_ptr<dw::gl::Shader>(dw::gl::Shader::create_from_file(GL_VERTEX_SHADER, "shader/shadow_map_vs.glsl"));
+            m_mesh_fs       = std::unique_ptr<dw::gl::Shader>(dw::gl::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/mesh_fs.glsl"));
+            m_depth_fs      = std::unique_ptr<dw::gl::Shader>(dw::gl::Shader::create_from_file(GL_FRAGMENT_SHADER, "shader/depth_fs.glsl"));
 
             {
                 if (!m_shadow_map_vs || !m_depth_fs)
@@ -225,8 +228,8 @@ private:
                 }
 
                 // Create general shader program
-                dw::Shader* shaders[] = { m_shadow_map_vs.get(), m_depth_fs.get() };
-                m_shadow_map_program  = std::make_unique<dw::Program>(2, shaders);
+                dw::gl::Shader* shaders[] = { m_shadow_map_vs.get(), m_depth_fs.get() };
+                m_shadow_map_program      = std::make_unique<dw::gl::Program>(2, shaders);
 
                 if (!m_shadow_map_program)
                 {
@@ -245,8 +248,8 @@ private:
                 }
 
                 // Create general shader program
-                dw::Shader* shaders[] = { m_mesh_vs.get(), m_mesh_fs.get() };
-                m_mesh_program        = std::make_unique<dw::Program>(2, shaders);
+                dw::gl::Shader* shaders[] = { m_mesh_vs.get(), m_mesh_fs.get() };
+                m_mesh_program            = std::make_unique<dw::gl::Program>(2, shaders);
 
                 if (!m_mesh_program)
                 {
@@ -265,9 +268,11 @@ private:
 
     void create_textures()
     {
-        m_shadow_map       = std::make_unique<dw::Texture2D>(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 1, 1, 1, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
-        
-        m_shadow_map_fbo = std::make_unique<dw::Framebuffer>();
+        m_shadow_map = std::make_unique<dw::gl::Texture2D>(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 1, 1, 1, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
+        m_shadow_map->set_wrapping(GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER);
+        m_shadow_map->set_border_color(1.0f, 1.0f, 1.0f, 1.0f);
+
+        m_shadow_map_fbo = std::make_unique<dw::gl::Framebuffer>();
         m_shadow_map_fbo->attach_depth_stencil_target(m_shadow_map.get(), 0, 0);
     }
 
@@ -276,7 +281,7 @@ private:
     bool create_uniform_buffer()
     {
         // Create uniform buffer for global data
-        m_global_ubo = std::make_unique<dw::UniformBuffer>(GL_DYNAMIC_DRAW, sizeof(GlobalUniforms));
+        m_global_ubo = std::make_unique<dw::gl::UniformBuffer>(GL_DYNAMIC_DRAW, sizeof(GlobalUniforms));
 
         return true;
     }
@@ -285,9 +290,10 @@ private:
 
     bool load_scene()
     {
-        m_mesh = dw::Mesh::load("mesh/lucy.obj");
+        m_mesh  = dw::Mesh::load("mesh/lucy.obj");
+        m_plane = dw::Mesh::load("mesh/plane.obj");
 
-        if (!mesh)
+        if (!m_mesh || !m_plane)
         {
             DW_LOG_FATAL("Failed to load mesh!");
             return false;
@@ -307,21 +313,21 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-    void render_mesh(dw::Mesh* mesh, glm::mat4 model, std::unique_ptr<dw::Program>& program, glm::vec3 color)
+    void render_mesh(dw::Mesh::Ptr mesh, glm::mat4 model, std::unique_ptr<dw::gl::Program>& program, glm::vec3 color)
     {
         program->set_uniform("u_Model", model);
 
         // Bind vertex array.
-        mesh->vao->bind();
+        mesh->mesh_vertex_array()->bind();
 
-        for (uint32_t i = 0; i < mesh->submeshes.size(); i++)
+        for (uint32_t i = 0; i < mesh->sub_mesh_count(); i++)
         {
-            dw::Submesh& submesh = mesh->submeshes[i];
+            dw::SubMesh& submesh = mesh->sub_meshes()[i];
 
             program->set_uniform("u_Color", color);
             program->set_uniform("u_Direction", m_light_direction);
             program->set_uniform("u_LightColor", m_light_color);
-     
+
             // Issue draw call.
             glDrawElementsBaseVertex(GL_TRIANGLES, submesh.index_count, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * submesh.base_index), submesh.base_vertex);
         }
@@ -329,7 +335,7 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
-    void render_scene(dw::Framebuffer* fbo, std::unique_ptr<dw::Program>& program, int x, int y, int w, int h, GLenum cull_face, bool clear = true)
+    void render_scene(dw::gl::Framebuffer* fbo, std::unique_ptr<dw::gl::Program>& program, int x, int y, int w, int h, GLenum cull_face, bool clear = true)
     {
         glEnable(GL_DEPTH_TEST);
         glDisable(GL_BLEND);
@@ -369,6 +375,7 @@ private:
 
         // Draw scene.
         render_mesh(m_mesh, m_transform, program, glm::vec3(0.5f));
+        render_mesh(m_plane, m_plane_transform, program, glm::vec3(0.5f));
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -432,27 +439,29 @@ private:
 
 private:
     // General GPU resources.
-    std::unique_ptr<dw::Shader> m_mesh_fs;
-    std::unique_ptr<dw::Shader> m_depth_fs;
+    std::unique_ptr<dw::gl::Shader> m_mesh_fs;
+    std::unique_ptr<dw::gl::Shader> m_depth_fs;
 
-    std::unique_ptr<dw::Shader> m_mesh_vs;
-    std::unique_ptr<dw::Shader> m_shadow_map_vs;
+    std::unique_ptr<dw::gl::Shader> m_mesh_vs;
+    std::unique_ptr<dw::gl::Shader> m_shadow_map_vs;
 
-    std::unique_ptr<dw::Program> m_mesh_program;
-    std::unique_ptr<dw::Program> m_shadow_map_program;
+    std::unique_ptr<dw::gl::Program> m_mesh_program;
+    std::unique_ptr<dw::gl::Program> m_shadow_map_program;
 
-    std::unique_ptr<dw::Framebuffer> m_shadow_map_fbo;
-    std::unique_ptr<dw::Texture2D>   m_shadow_map;
- 
-    std::unique_ptr<dw::UniformBuffer> m_global_ubo;
+    std::unique_ptr<dw::gl::Framebuffer> m_shadow_map_fbo;
+    std::unique_ptr<dw::gl::Texture2D>   m_shadow_map;
 
-    dw::Mesh* m_mesh;
+    std::unique_ptr<dw::gl::UniformBuffer> m_global_ubo;
+
+    dw::Mesh::Ptr               m_mesh;
+    dw::Mesh::Ptr               m_plane;
     std::unique_ptr<dw::Camera> m_main_camera;
 
     GlobalUniforms m_global_uniforms;
 
     // Scene
     glm::mat4 m_transform;
+    glm::mat4 m_plane_transform;
 
     // Camera controls.
     bool  m_mouse_look         = false;
@@ -466,7 +475,6 @@ private:
     glm::vec3 m_light_target;
     glm::vec3 m_light_direction;
     glm::vec3 m_light_color;
-    Skybox    m_skybox;
 
     // Shadow Mapping.
     float     m_shadow_bias = 0.001f;

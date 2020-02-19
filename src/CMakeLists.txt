@@ -23,7 +23,7 @@ if (NOT APPLE)
 endif()
 
 if(CLANG_FORMAT_EXE)
-    add_custom_target(AreaLightShadows-clang-format COMMAND ${CLANG_FORMAT_EXE} -i -style=file main.cpp ${SHADER_SOURCES})
+    add_custom_target(AreaLightShadows-clang-format COMMAND ${CLANG_FORMAT_EXE} -i -style=file main.cpp)
 endif()
 
 set_property(TARGET AreaLightShadows PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/$(Configuration)")

@@ -17,9 +17,9 @@ in vec4 FS_IN_NDCFragPos;
 // UNIFORMS ---------------------------------------------------------
 // ------------------------------------------------------------------
 
-uniform vec3 u_Color;
-uniform vec3 u_LightColor;
-uniform vec3 u_Direction;
+uniform vec3      u_Color;
+uniform vec3      u_LightColor;
+uniform vec3      u_Direction;
 uniform sampler2D s_ShadowMap;
 uniform float     u_LightBias;
 
@@ -61,7 +61,7 @@ void main()
     vec3 L = normalize(-u_Direction);
     vec3 N = normalize(FS_IN_Normal);
 
-    FS_OUT_Color = u_Color * clamp(dot(N, L), 0.0, 0.0) + u_Color + 0.1;
+    FS_OUT_Color = u_Color * clamp(dot(N, L), 0.0, 1.0) * shadow + u_Color * 0.1;
 }
 
 // ------------------------------------------------------------------
