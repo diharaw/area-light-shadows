@@ -23,6 +23,8 @@ struct GlobalUniforms
     DW_ALIGNED(16)
     glm::mat4 view_proj;
     DW_ALIGNED(16)
+    glm::mat4 light_view;
+    DW_ALIGNED(16)
     glm::mat4 light_view_proj;
     DW_ALIGNED(16)
     glm::vec4 cam_pos;
@@ -36,7 +38,7 @@ protected:
     bool init(int argc, const char* argv[]) override
     {
         m_light_target              = glm::vec3(0.0f);
-        glm::vec3 default_light_dir = glm::normalize(glm::vec3(-0.5000f, 0.9770f, 0.5000f));
+        glm::vec3 default_light_dir = glm::normalize(glm::vec3(-0.5f, 0.5f, 0.5f));
         m_light_direction           = -default_light_dir;
         m_light_color               = glm::vec3(10000.0f);
 
@@ -61,7 +63,7 @@ protected:
         m_transform = glm::rotate(m_transform, glm::radians(45.0f), glm::vec3(0.0, 1.0f, 0.0f));
 
         m_plane_transform = glm::mat4(1.0f);
-        m_plane_transform = glm::scale(m_plane_transform, glm::vec3(0.4f));
+        m_plane_transform = glm::scale(m_plane_transform, glm::vec3(1.0f));
 
         return true;
     }
@@ -70,6 +72,8 @@ protected:
 
     void update(double delta) override
     {
+        ImGui::SliderFloat("Light Size", &m_light_size, 0.0f, 1.0f);
+
         // Update camera.
         update_camera();
 
@@ -271,6 +275,8 @@ private:
         m_shadow_map = std::make_unique<dw::gl::Texture2D>(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 1, 1, 1, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT);
         m_shadow_map->set_wrapping(GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER);
         m_shadow_map->set_border_color(1.0f, 1.0f, 1.0f, 1.0f);
+        m_shadow_map->set_min_filter(GL_NEAREST);
+        m_shadow_map->set_mag_filter(GL_NEAREST);
 
         m_shadow_map_fbo = std::make_unique<dw::gl::Framebuffer>();
         m_shadow_map_fbo->attach_depth_stencil_target(m_shadow_map.get(), 0, 0);
@@ -366,6 +372,7 @@ private:
         program->use();
 
         program->set_uniform("u_LightBias", m_shadow_bias);
+        program->set_uniform("u_LightSize", m_light_size);
 
         if (program->set_uniform("s_ShadowMap", 1))
             m_shadow_map->bind(1);
@@ -386,6 +393,7 @@ private:
         glm::mat4 view             = glm::lookAt(light_camera_pos, m_light_target, glm::vec3(0.0f, 1.0f, 0.0f));
         glm::mat4 proj             = glm::ortho(-SHADOW_MAP_EXTENTS, SHADOW_MAP_EXTENTS, -SHADOW_MAP_EXTENTS, SHADOW_MAP_EXTENTS, 1.0f, LIGHT_FAR_PLANE);
 
+        m_global_uniforms.light_view = view;
         m_global_uniforms.light_view_proj = proj * view;
 
         void* ptr = m_global_ubo->map(GL_WRITE_ONLY);
@@ -483,6 +491,7 @@ private:
     // Camera orientation.
     float m_camera_x;
     float m_camera_y;
+    float m_light_size = 0.025f;
 };
 
 DW_DECLARE_MAIN(AreaLightShadows)
