@@ -72,12 +72,26 @@ protected:
 
     void update(double delta) override
     {
+        ImGui::Checkbox("Orthographic", &m_ortho);
         ImGui::SliderFloat("Light Size", &m_light_size, 0.0f, 1.0f);
+        ImGui::SliderFloat("Light Bias", &m_shadow_bias, 0.0f, 1.0f);
+
+        const char* listbox_items[] = { "25", "32", "64", "100", "128" };
+        const int   sample_counts[] = { 25, 32, 64, 100, 128 };
+        ImGui::ListBox("Blocker Search Samples", &m_blocker_search_samples_idx, listbox_items, IM_ARRAYSIZE(listbox_items), 5);
+        ImGui::ListBox("PCF Samples", &m_pcf_filter_samples_idx, listbox_items, IM_ARRAYSIZE(listbox_items), 5);
+
+        m_blocker_search_samples = sample_counts[m_blocker_search_samples_idx];
+        m_pcf_filter_samples = sample_counts[m_pcf_filter_samples_idx];
 
         // Update camera.
         update_camera();
 
         update_uniforms();
+
+        glm::mat4 m        = glm::mat4(1.0f);
+        m_sphere_transform = glm::translate(m, glm::vec3(30.0f, 40.0f * (sin(glfwGetTime()) * 0.5f + 0.5f), 10.0f));
+        m_sphere_transform = glm::scale(m_sphere_transform, glm::vec3(5.0f));
 
         render_shadow_map();
         render_lit_scene();
@@ -211,6 +225,7 @@ private:
         // Draw scene.
         render_mesh(m_mesh, m_transform, m_shadow_map_program, glm::vec3(0.5f));
         render_mesh(m_plane, m_plane_transform, m_shadow_map_program, glm::vec3(0.5f));
+        render_mesh(m_sphere, m_sphere_transform, m_shadow_map_program, glm::vec3(0.5f));
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -296,10 +311,11 @@ private:
 
     bool load_scene()
     {
-        m_mesh  = dw::Mesh::load("mesh/lucy.obj");
-        m_plane = dw::Mesh::load("mesh/plane.obj");
+        m_mesh   = dw::Mesh::load("mesh/lucy.obj");
+        m_plane  = dw::Mesh::load("mesh/plane.obj");
+        m_sphere = dw::Mesh::load("mesh/sphere.obj");
 
-        if (!m_mesh || !m_plane)
+        if (!m_mesh || !m_plane || !m_sphere)
         {
             DW_LOG_FATAL("Failed to load mesh!");
             return false;
@@ -373,6 +389,9 @@ private:
 
         program->set_uniform("u_LightBias", m_shadow_bias);
         program->set_uniform("u_LightSize", m_light_size);
+        program->set_uniform("u_Ortho", (int)m_ortho);
+        program->set_uniform("u_BlockerSearchSamples", m_blocker_search_samples);
+        program->set_uniform("u_PCFSamples", m_pcf_filter_samples);
 
         if (program->set_uniform("s_ShadowMap", 1))
             m_shadow_map->bind(1);
@@ -383,6 +402,7 @@ private:
         // Draw scene.
         render_mesh(m_mesh, m_transform, program, glm::vec3(0.5f));
         render_mesh(m_plane, m_plane_transform, program, glm::vec3(0.5f));
+        render_mesh(m_sphere, m_sphere_transform, program, glm::vec3(0.5f));
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -391,9 +411,14 @@ private:
     {
         glm::vec3 light_camera_pos = m_light_target - m_light_direction * 200.0f;
         glm::mat4 view             = glm::lookAt(light_camera_pos, m_light_target, glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::mat4 proj             = glm::ortho(-SHADOW_MAP_EXTENTS, SHADOW_MAP_EXTENTS, -SHADOW_MAP_EXTENTS, SHADOW_MAP_EXTENTS, 1.0f, LIGHT_FAR_PLANE);
+        glm::mat4 proj;
 
-        m_global_uniforms.light_view = view;
+        if (m_ortho)
+            proj = glm::ortho(-SHADOW_MAP_EXTENTS, SHADOW_MAP_EXTENTS, -SHADOW_MAP_EXTENTS, SHADOW_MAP_EXTENTS, 1.0f, LIGHT_FAR_PLANE);
+        else
+            proj = glm::perspective(glm::radians(60.0f), 1.0f, 1.0f, LIGHT_FAR_PLANE);
+
+        m_global_uniforms.light_view      = view;
         m_global_uniforms.light_view_proj = proj * view;
 
         void* ptr = m_global_ubo->map(GL_WRITE_ONLY);
@@ -461,6 +486,7 @@ private:
 
     std::unique_ptr<dw::gl::UniformBuffer> m_global_ubo;
 
+    dw::Mesh::Ptr               m_sphere;
     dw::Mesh::Ptr               m_mesh;
     dw::Mesh::Ptr               m_plane;
     std::unique_ptr<dw::Camera> m_main_camera;
@@ -470,6 +496,7 @@ private:
     // Scene
     glm::mat4 m_transform;
     glm::mat4 m_plane_transform;
+    glm::mat4 m_sphere_transform;
 
     // Camera controls.
     bool  m_mouse_look         = false;
@@ -479,19 +506,24 @@ private:
     float m_camera_speed       = 0.05f;
     float m_offset             = 0.1f;
     bool  m_debug_gui          = true;
+    bool  m_ortho              = true;
 
     glm::vec3 m_light_target;
     glm::vec3 m_light_direction;
     glm::vec3 m_light_color;
 
     // Shadow Mapping.
-    float     m_shadow_bias = 0.001f;
+    float     m_shadow_bias = 0.006f;
     glm::mat4 m_light_view_proj;
+    int       m_blocker_search_samples_idx = 4;
+    int       m_blocker_search_samples = 128;
+    int       m_pcf_filter_samples_idx = 4;
+    int       m_pcf_filter_samples = 128;
 
     // Camera orientation.
     float m_camera_x;
     float m_camera_y;
-    float m_light_size = 0.025f;
+    float m_light_size = 1.0f;
 };
 
 DW_DECLARE_MAIN(AreaLightShadows)
