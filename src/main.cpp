@@ -15,8 +15,10 @@
 #define CAMERA_FAR_PLANE 300.0f
 #define DEBUG_CAMERA_FAR_PLANE 10000.0f
 #define SHADOW_MAP_SIZE 1024
-#define LIGHT_FAR_PLANE 650.0f
 #define SHADOW_MAP_EXTENTS 75.0f
+#define VISUALIZE_SHADING 0
+#define VISUALIZE_NUM_BLOCKERS 1
+#define VISUALIZE_PENUMBRA 2
 
 struct GlobalUniforms
 {
@@ -38,7 +40,7 @@ protected:
     bool init(int argc, const char* argv[]) override
     {
         m_light_target              = glm::vec3(0.0f);
-        glm::vec3 default_light_dir = glm::normalize(glm::vec3(-0.5f, 0.5f, 0.5f));
+        glm::vec3 default_light_dir = glm::normalize(glm::vec3(-0.5f, 0.99f, 0.5f));
         m_light_direction           = -default_light_dir;
         m_light_color               = glm::vec3(10000.0f);
 
@@ -75,6 +77,14 @@ protected:
         ImGui::Checkbox("Orthographic", &m_ortho);
         ImGui::SliderFloat("Light Size", &m_light_size, 0.0f, 1.0f);
         ImGui::SliderFloat("Light Bias", &m_shadow_bias, 0.0f, 1.0f);
+        ImGui::SliderFloat("Blocker Search Scale", &m_blocker_search_scale, 0.0f, 1.0f);
+        ImGui::InputFloat("Light Near", &m_light_near);
+        ImGui::InputFloat("Light Far", &m_light_far);
+        ImGui::Separator();
+        ImGui::Text("Visualization");
+        ImGui::RadioButton("Shaded", &m_visualization, VISUALIZE_SHADING);
+        ImGui::RadioButton("Num Blockers", &m_visualization, VISUALIZE_NUM_BLOCKERS);
+        ImGui::RadioButton("Penumbra", &m_visualization, VISUALIZE_PENUMBRA);
 
         const char* listbox_items[] = { "25", "32", "64", "100", "128" };
         const int   sample_counts[] = { 25, 32, 64, 100, 128 };
@@ -389,9 +399,13 @@ private:
 
         program->set_uniform("u_LightBias", m_shadow_bias);
         program->set_uniform("u_LightSize", m_light_size);
+        program->set_uniform("u_LightNear", m_light_near);
+        program->set_uniform("u_LightFar", m_light_far);
         program->set_uniform("u_Ortho", (int)m_ortho);
+        program->set_uniform("u_Visualization", m_visualization);
         program->set_uniform("u_BlockerSearchSamples", m_blocker_search_samples);
         program->set_uniform("u_PCFSamples", m_pcf_filter_samples);
+        program->set_uniform("u_BlockerSearchScale", m_blocker_search_scale);
 
         if (program->set_uniform("s_ShadowMap", 1))
             m_shadow_map->bind(1);
@@ -414,9 +428,9 @@ private:
         glm::mat4 proj;
 
         if (m_ortho)
-            proj = glm::ortho(-SHADOW_MAP_EXTENTS, SHADOW_MAP_EXTENTS, -SHADOW_MAP_EXTENTS, SHADOW_MAP_EXTENTS, 1.0f, LIGHT_FAR_PLANE);
+            proj = glm::ortho(-SHADOW_MAP_EXTENTS, SHADOW_MAP_EXTENTS, -SHADOW_MAP_EXTENTS, SHADOW_MAP_EXTENTS, m_light_near, m_light_far);
         else
-            proj = glm::perspective(glm::radians(60.0f), 1.0f, 1.0f, LIGHT_FAR_PLANE);
+            proj = glm::perspective(glm::radians(60.0f), 1.0f, m_light_near, m_light_far);
 
         m_global_uniforms.light_view      = view;
         m_global_uniforms.light_view_proj = proj * view;
@@ -506,19 +520,23 @@ private:
     float m_camera_speed       = 0.05f;
     float m_offset             = 0.1f;
     bool  m_debug_gui          = true;
-    bool  m_ortho              = true;
+    bool  m_ortho              = false;
 
     glm::vec3 m_light_target;
     glm::vec3 m_light_direction;
     glm::vec3 m_light_color;
 
     // Shadow Mapping.
-    float     m_shadow_bias = 0.006f;
+    float     m_shadow_bias = 0.0f;
     glm::mat4 m_light_view_proj;
     int       m_blocker_search_samples_idx = 4;
     int       m_blocker_search_samples = 128;
     int       m_pcf_filter_samples_idx = 4;
     int       m_pcf_filter_samples = 128;
+    float     m_light_near                 = 1.0f;
+    float     m_light_far                  = 500.0f;
+    float     m_blocker_search_scale       = 1.0f;
+    int       m_visualization = 0;
 
     // Camera orientation.
     float m_camera_x;

@@ -17,9 +17,9 @@ in vec4 FS_IN_NDCFragPos;
 // UNIFORMS ---------------------------------------------------------
 // ------------------------------------------------------------------
 
-#define POISSON_DISK_SAMPLE_COUNT 128 
-#define DIRECTIONAL_LIGHT_NEAR_PLANE 1.0
-#define DIRECTIONAL_LIGHT_FAR_PLANE 650.0
+#define VISUALIZE_SHADING 0
+#define VISUALIZE_NUM_BLOCKERS 1
+#define VISUALIZE_PENUMBRA 2
 
 uniform vec3      u_Color;
 uniform vec3      u_LightColor;
@@ -27,9 +27,13 @@ uniform vec3      u_Direction;
 uniform sampler2D s_ShadowMap;
 uniform float     u_LightBias;
 uniform float     u_LightSize;
+uniform float     u_LightFar;
+uniform float     u_LightNear;
 uniform int       u_Ortho;
 uniform int       u_BlockerSearchSamples;
 uniform int       u_PCFSamples;
+uniform int       u_Visualization;
+uniform float     u_BlockerSearchScale;
 
 layout(std140) uniform GlobalUniforms
 {
@@ -408,7 +412,7 @@ const vec2 Poisson128[128] = vec2[](
 // Using similar triangles from the surface point to the area light
 float search_region_radius_uv(float z)
 {
-    return u_LightSize * (z - DIRECTIONAL_LIGHT_NEAR_PLANE) / z;
+    return u_BlockerSearchScale * u_LightSize * (z - u_LightNear) / z;
 }
 
 // ------------------------------------------------------------------
@@ -417,9 +421,9 @@ float search_region_radius_uv(float z)
 float penumbra_radius_uv(float zReceiver, float zBlocker)
 {
     if (u_Ortho == 1)
-        return (zReceiver - zBlocker) / zBlocker;//(DIRECTIONAL_LIGHT_FAR_PLANE - DIRECTIONAL_LIGHT_NEAR_PLANE);
+        return abs(zReceiver - zBlocker) / zBlocker;
     else
-        return (zReceiver - zBlocker) / zBlocker;
+        return abs(zReceiver - zBlocker) / zBlocker;
 }
 
 // ------------------------------------------------------------------
@@ -427,7 +431,7 @@ float penumbra_radius_uv(float zReceiver, float zBlocker)
 // Project UV size to the near plane of the light
 float project_to_light_uv(float penumbra_radius, float z)
 {
-    return penumbra_radius * u_LightSize * DIRECTIONAL_LIGHT_NEAR_PLANE / z;
+    return penumbra_radius * u_LightSize * u_LightNear / z;
 }
 
 // ------------------------------------------------------------------
@@ -435,9 +439,9 @@ float project_to_light_uv(float penumbra_radius, float z)
 float z_clip_to_eye(float z)
 {
     if (u_Ortho == 1)
-        return DIRECTIONAL_LIGHT_NEAR_PLANE + (DIRECTIONAL_LIGHT_FAR_PLANE - DIRECTIONAL_LIGHT_NEAR_PLANE) * z;
+        return u_LightNear + (u_LightFar - u_LightNear) * z;
     else
-        return DIRECTIONAL_LIGHT_FAR_PLANE * DIRECTIONAL_LIGHT_NEAR_PLANE / (DIRECTIONAL_LIGHT_FAR_PLANE - z * (DIRECTIONAL_LIGHT_FAR_PLANE - DIRECTIONAL_LIGHT_NEAR_PLANE));
+        return u_LightFar * u_LightNear / (u_LightFar - z * (u_LightFar - u_LightNear));
 }
 
 // ------------------------------------------------------------------
@@ -476,6 +480,7 @@ void find_blocker(out float accum_blocker_depth,
 {
     accum_blocker_depth = 0.0;
     num_blockers = 0.0;
+    max_blockers = float(u_BlockerSearchSamples);
     float biased_depth = z0 - bias;
 
     for (int i = 0; i < u_BlockerSearchSamples; ++i)
@@ -535,7 +540,7 @@ float pcf_poisson_filter(vec2 uv, float z0, float bias, float filter_radius_uv)
 
 // ------------------------------------------------------------------
 
-float pcss_filter(vec2 uv, float z, float bias, float z_vs, out float p_r)
+float pcss_filter(vec2 uv, float z, float bias, float z_vs, out float p_r, out vec3 debug_color)
 {
     // ------------------------
     // STEP 1: blocker search
@@ -547,8 +552,13 @@ float pcss_filter(vec2 uv, float z, float bias, float z_vs, out float p_r)
     float avg_blocker_depth = accum_blocker_depth / num_blockers;
 
     // Early out if not in the penumbra
-    if (num_blockers == 0.0)// || avg_blocker_depth > z)
+    if (num_blockers == 0.0)
+    {
+        debug_color = vec3(0.0);
         return 1.0;
+    } 
+
+    debug_color = vec3(num_blockers/max_blockers);
 
     // ------------------------
     // STEP 2: penumbra size
@@ -567,7 +577,7 @@ float pcss_filter(vec2 uv, float z, float bias, float z_vs, out float p_r)
 
 // ------------------------------------------------------------------
 
-float shadow_occlussion(vec3 p, out float search_radius, out float p_r)
+float shadow_occlussion(vec3 p, out float search_radius, out float p_r, out vec3 debug_color)
 {
     // Transform frag position into Light-space.
     vec4 light_space_pos = light_view_proj * vec4(p, 1.0);
@@ -583,7 +593,7 @@ float shadow_occlussion(vec3 p, out float search_radius, out float p_r)
     vec4 pos_vs = light_view * vec4(p, 1.0);
     pos_vs.xyz /= pos_vs.w;
 
-    return pcss_filter(proj_coords.xy, current_depth, bias, -pos_vs.z, p_r);
+    return pcss_filter(proj_coords.xy, current_depth, bias, -(pos_vs.z), p_r, debug_color);
 }
 
 // ------------------------------------------------------------------
@@ -595,12 +605,18 @@ void main()
     float frag_depth = (FS_IN_NDCFragPos.z / FS_IN_NDCFragPos.w) * 0.5 + 0.5;
     float r;
     float p_r;
-    float shadow     = shadow_occlussion(FS_IN_WorldPos, r, p_r);
+    vec3 num_blockers_color;
+    float shadow = shadow_occlussion(FS_IN_WorldPos, r, p_r, num_blockers_color);
 
     vec3 L = normalize(-u_Direction);
     vec3 N = normalize(FS_IN_Normal);
 
-    FS_OUT_Color = u_Color * clamp(dot(N, L), 0.0, 1.0) * shadow + u_Color * 0.1;
+    if (u_Visualization == VISUALIZE_SHADING)
+        FS_OUT_Color = u_Color * clamp(dot(N, L), 0.0, 1.0) * shadow + u_Color * 0.1;
+    else if (u_Visualization == VISUALIZE_NUM_BLOCKERS)
+        FS_OUT_Color = num_blockers_color;
+    else if (u_Visualization == VISUALIZE_PENUMBRA)
+        FS_OUT_Color = vec3(p_r);
 }
 
 // ------------------------------------------------------------------
