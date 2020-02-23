@@ -12,7 +12,7 @@
 #include <random>
 
 #undef min
-#define CAMERA_FAR_PLANE 300.0f
+#define CAMERA_FAR_PLANE 1000.0f
 #define DEBUG_CAMERA_FAR_PLANE 10000.0f
 #define SHADOW_MAP_SIZE 1024
 #define SHADOW_MAP_EXTENTS 75.0f
@@ -74,10 +74,36 @@ protected:
 
     void update(double delta) override
     {
+        if (m_debug_gui)
+            debug_gui();
+
+        // Update camera.
+        update_camera();
+
+        update_uniforms();
+
+        glm::mat4 m        = glm::mat4(1.0f);
+        m_sphere_transform = glm::translate(m, glm::vec3(30.0f, 40.0f * (sin(glfwGetTime()) * 0.5f + 0.5f), 10.0f));
+        m_sphere_transform = glm::scale(m_sphere_transform, glm::vec3(5.0f));
+
+        render_shadow_map();
+        render_lit_scene();
+
+        if (m_visualize_frustum)
+            m_debug_draw.frustum(m_global_uniforms.light_view_proj, glm::vec3(1.0f, 0.0f, 0.0f));
+
+        m_debug_draw.render(nullptr, m_width, m_height, m_global_uniforms.view_proj);
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
+    void debug_gui()
+    {
         ImGui::Checkbox("Orthographic", &m_ortho);
+        ImGui::Checkbox("Visualize Light Frustum", &m_visualize_frustum);
+        ImGui::Checkbox("Show Animated Model", &m_animated_model);
         ImGui::SliderFloat("Light Size", &m_light_size, 0.0f, 1.0f);
         ImGui::SliderFloat("Light Bias", &m_shadow_bias, 0.0f, 1.0f);
-        ImGui::SliderFloat("Blocker Search Scale", &m_blocker_search_scale, 0.0f, 1.0f);
         ImGui::InputFloat("Light Near", &m_light_near);
         ImGui::InputFloat("Light Far", &m_light_far);
         ImGui::Separator();
@@ -92,25 +118,7 @@ protected:
         ImGui::ListBox("PCF Samples", &m_pcf_filter_samples_idx, listbox_items, IM_ARRAYSIZE(listbox_items), 5);
 
         m_blocker_search_samples = sample_counts[m_blocker_search_samples_idx];
-        m_pcf_filter_samples = sample_counts[m_pcf_filter_samples_idx];
-
-        // Update camera.
-        update_camera();
-
-        update_uniforms();
-
-        glm::mat4 m        = glm::mat4(1.0f);
-        m_sphere_transform = glm::translate(m, glm::vec3(30.0f, 40.0f * (sin(glfwGetTime()) * 0.5f + 0.5f), 10.0f));
-        m_sphere_transform = glm::scale(m_sphere_transform, glm::vec3(5.0f));
-
-        render_shadow_map();
-        render_lit_scene();
-    }
-
-    // -----------------------------------------------------------------------------------------------------------------------------------
-
-    void shutdown() override
-    {
+        m_pcf_filter_samples     = sample_counts[m_pcf_filter_samples_idx];
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -118,7 +126,7 @@ protected:
     void window_resized(int width, int height) override
     {
         // Override window resized method to update camera projection.
-        m_main_camera->update_projection(60.0f, 0.1f, CAMERA_FAR_PLANE, float(m_width) / float(m_height));
+        m_main_camera->update_projection(60.0f, 1.0f, CAMERA_FAR_PLANE, float(m_width) / float(m_height));
 
         create_textures();
     }
@@ -235,7 +243,9 @@ private:
         // Draw scene.
         render_mesh(m_mesh, m_transform, m_shadow_map_program, glm::vec3(0.5f));
         render_mesh(m_plane, m_plane_transform, m_shadow_map_program, glm::vec3(0.5f));
-        render_mesh(m_sphere, m_sphere_transform, m_shadow_map_program, glm::vec3(0.5f));
+
+        if (m_animated_model)
+            render_mesh(m_sphere, m_sphere_transform, m_shadow_map_program, glm::vec3(0.5f));
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -338,7 +348,7 @@ private:
 
     void create_camera()
     {
-        m_main_camera = std::make_unique<dw::Camera>(60.0f, 0.1f, CAMERA_FAR_PLANE, float(m_width) / float(m_height), glm::vec3(50.0f, 20.0f, 0.0f), glm::vec3(-1.0f, 0.0, 0.0f));
+        m_main_camera = std::make_unique<dw::Camera>(60.0f, 1.0f, CAMERA_FAR_PLANE, float(m_width) / float(m_height), glm::vec3(50.0f, 20.0f, 0.0f), glm::vec3(-1.0f, 0.0, 0.0f));
         m_main_camera->set_rotatation_delta(glm::vec3(0.0f, -90.0f, 0.0f));
         m_main_camera->update();
     }
@@ -416,7 +426,9 @@ private:
         // Draw scene.
         render_mesh(m_mesh, m_transform, program, glm::vec3(0.5f));
         render_mesh(m_plane, m_plane_transform, program, glm::vec3(0.5f));
-        render_mesh(m_sphere, m_sphere_transform, program, glm::vec3(0.5f));
+
+        if (m_animated_model)
+            render_mesh(m_sphere, m_sphere_transform, program, glm::vec3(0.5f));
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -520,28 +532,30 @@ private:
     float m_camera_speed       = 0.05f;
     float m_offset             = 0.1f;
     bool  m_debug_gui          = true;
-    bool  m_ortho              = false;
+    bool  m_ortho              = true;
+    bool  m_visualize_frustum  = false;
+    bool  m_animated_model     = false;
 
     glm::vec3 m_light_target;
     glm::vec3 m_light_direction;
     glm::vec3 m_light_color;
 
     // Shadow Mapping.
-    float     m_shadow_bias = 0.0f;
+    float     m_shadow_bias = 0.008f;
     glm::mat4 m_light_view_proj;
     int       m_blocker_search_samples_idx = 4;
-    int       m_blocker_search_samples = 128;
-    int       m_pcf_filter_samples_idx = 4;
-    int       m_pcf_filter_samples = 128;
-    float     m_light_near                 = 1.0f;
-    float     m_light_far                  = 500.0f;
+    int       m_blocker_search_samples     = 128;
+    int       m_pcf_filter_samples_idx     = 4;
+    int       m_pcf_filter_samples         = 128;
+    float     m_light_near                 = 120.0f;
+    float     m_light_far                  = 250.0f;
     float     m_blocker_search_scale       = 1.0f;
-    int       m_visualization = 0;
+    int       m_visualization              = 0;
 
     // Camera orientation.
     float m_camera_x;
     float m_camera_y;
-    float m_light_size = 1.0f;
+    float m_light_size = 0.07f;
 };
 
 DW_DECLARE_MAIN(AreaLightShadows)

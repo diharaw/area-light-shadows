@@ -558,7 +558,7 @@ float pcss_filter(vec2 uv, float z, float bias, float z_vs, out float p_r, out v
         return 1.0;
     } 
 
-    debug_color = vec3(num_blockers/max_blockers);
+    debug_color = vec3(num_blockers / max_blockers);
 
     // ------------------------
     // STEP 2: penumbra size
@@ -592,6 +592,9 @@ float shadow_occlussion(vec3 p, out float search_radius, out float p_r, out vec3
  
     vec4 pos_vs = light_view * vec4(p, 1.0);
     pos_vs.xyz /= pos_vs.w;
+
+    if (proj_coords.x > 1.0 || proj_coords.y > 1.0 || proj_coords.z > 1.0 ||proj_coords.x < 0.0 || proj_coords.y < 0.0 || proj_coords.z < 0.0)
+        return 1.0;
 
     return pcss_filter(proj_coords.xy, current_depth, bias, -(pos_vs.z), p_r, debug_color);
 }
