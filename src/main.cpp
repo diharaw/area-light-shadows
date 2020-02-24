@@ -20,6 +20,13 @@
 #define VISUALIZE_NUM_BLOCKERS 1
 #define VISUALIZE_PENUMBRA 2
 
+enum Scene
+{
+    SCENE_LUCY,
+    SCENE_PILLAR,
+    SCENE_ANIMATED
+};
+
 struct GlobalUniforms
 {
     DW_ALIGNED(16)
@@ -60,9 +67,12 @@ protected:
         // Create camera.
         create_camera();
 
-        m_transform = glm::mat4(1.0f);
-        m_transform = glm::scale(m_transform, glm::vec3(0.1f));
-        m_transform = glm::rotate(m_transform, glm::radians(45.0f), glm::vec3(0.0, 1.0f, 0.0f));
+        m_lucy_transform = glm::mat4(1.0f);
+        m_lucy_transform = glm::scale(m_lucy_transform, glm::vec3(0.1f));
+        m_lucy_transform = glm::rotate(m_lucy_transform, glm::radians(45.0f), glm::vec3(0.0, 1.0f, 0.0f));
+
+        m_pillar_transform = glm::mat4(1.0f);
+        m_pillar_transform = glm::scale(m_pillar_transform, glm::vec3(7.0f));
 
         m_plane_transform = glm::mat4(1.0f);
         m_plane_transform = glm::scale(m_plane_transform, glm::vec3(1.0f));
@@ -83,7 +93,7 @@ protected:
         update_uniforms();
 
         glm::mat4 m        = glm::mat4(1.0f);
-        m_sphere_transform = glm::translate(m, glm::vec3(30.0f, 40.0f * (sin(glfwGetTime()) * 0.5f + 0.5f), 10.0f));
+        m_sphere_transform = glm::translate(m, glm::vec3(0.0f, 40.0f * (sin(glfwGetTime()) * 0.5f + 0.5f), 0.0f));
         m_sphere_transform = glm::scale(m_sphere_transform, glm::vec3(5.0f));
 
         render_shadow_map();
@@ -101,7 +111,6 @@ protected:
     {
         ImGui::Checkbox("Orthographic", &m_ortho);
         ImGui::Checkbox("Visualize Light Frustum", &m_visualize_frustum);
-        ImGui::Checkbox("Show Animated Model", &m_animated_model);
         ImGui::SliderFloat("Light Size", &m_light_size, 0.0f, 1.0f);
         ImGui::SliderFloat("Light Bias", &m_shadow_bias, 0.0f, 1.0f);
         ImGui::InputFloat("Light Near", &m_light_near);
@@ -112,13 +121,21 @@ protected:
         ImGui::RadioButton("Num Blockers", &m_visualization, VISUALIZE_NUM_BLOCKERS);
         ImGui::RadioButton("Penumbra", &m_visualization, VISUALIZE_PENUMBRA);
 
-        const char* listbox_items[] = { "25", "32", "64", "100", "128" };
-        const int   sample_counts[] = { 25, 32, 64, 100, 128 };
-        ImGui::ListBox("Blocker Search Samples", &m_blocker_search_samples_idx, listbox_items, IM_ARRAYSIZE(listbox_items), 5);
-        ImGui::ListBox("PCF Samples", &m_pcf_filter_samples_idx, listbox_items, IM_ARRAYSIZE(listbox_items), 5);
+        {
+            const char* listbox_items[] = { "Lucy", "Pillar", "Animated" };
 
-        m_blocker_search_samples = sample_counts[m_blocker_search_samples_idx];
-        m_pcf_filter_samples     = sample_counts[m_pcf_filter_samples_idx];
+            ImGui::ListBox("Scene", &m_current_scene, listbox_items, IM_ARRAYSIZE(listbox_items), 3);
+        }
+
+        {
+            const char* listbox_items[] = { "25", "32", "64", "100", "128" };
+            const int   sample_counts[] = { 25, 32, 64, 100, 128 };
+            ImGui::ListBox("Blocker Search Samples", &m_blocker_search_samples_idx, listbox_items, IM_ARRAYSIZE(listbox_items), 5);
+            ImGui::ListBox("PCF Samples", &m_pcf_filter_samples_idx, listbox_items, IM_ARRAYSIZE(listbox_items), 5);
+
+            m_blocker_search_samples = sample_counts[m_blocker_search_samples_idx];
+            m_pcf_filter_samples     = sample_counts[m_pcf_filter_samples_idx];
+        }
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -220,6 +237,22 @@ private:
 
     // -----------------------------------------------------------------------------------------------------------------------------------
 
+    void render_scene(std::unique_ptr<dw::gl::Program>& program)
+    {
+        if (m_current_scene == SCENE_LUCY)
+            render_mesh(m_lucy, m_lucy_transform, program, glm::vec3(0.5f));
+        else if (m_current_scene == SCENE_PILLAR)
+        {
+            glDisable(GL_CULL_FACE);
+            render_mesh(m_pillar, m_pillar_transform, program, glm::vec3(0.5f));
+            glEnable(GL_CULL_FACE);
+        }
+        else if (m_current_scene == SCENE_ANIMATED)
+            render_mesh(m_sphere, m_sphere_transform, program, glm::vec3(0.5f));
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------------------------
+
     void render_shadow_map()
     {
         glEnable(GL_DEPTH_TEST);
@@ -241,11 +274,9 @@ private:
         m_global_ubo->bind_base(0);
 
         // Draw scene.
-        render_mesh(m_mesh, m_transform, m_shadow_map_program, glm::vec3(0.5f));
         render_mesh(m_plane, m_plane_transform, m_shadow_map_program, glm::vec3(0.5f));
 
-        if (m_animated_model)
-            render_mesh(m_sphere, m_sphere_transform, m_shadow_map_program, glm::vec3(0.5f));
+        render_scene(m_shadow_map_program);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -331,11 +362,12 @@ private:
 
     bool load_scene()
     {
-        m_mesh   = dw::Mesh::load("mesh/lucy.obj");
+        m_lucy   = dw::Mesh::load("mesh/lucy.obj");
+        m_pillar = dw::Mesh::load("mesh/pillar.obj");
         m_plane  = dw::Mesh::load("mesh/plane.obj");
         m_sphere = dw::Mesh::load("mesh/sphere.obj");
 
-        if (!m_mesh || !m_plane || !m_sphere)
+        if (!m_lucy || !m_pillar || !m_plane || !m_sphere)
         {
             DW_LOG_FATAL("Failed to load mesh!");
             return false;
@@ -424,11 +456,9 @@ private:
         m_global_ubo->bind_base(0);
 
         // Draw scene.
-        render_mesh(m_mesh, m_transform, program, glm::vec3(0.5f));
         render_mesh(m_plane, m_plane_transform, program, glm::vec3(0.5f));
 
-        if (m_animated_model)
-            render_mesh(m_sphere, m_sphere_transform, program, glm::vec3(0.5f));
+        render_scene(program);
     }
 
     // -----------------------------------------------------------------------------------------------------------------------------------
@@ -513,14 +543,16 @@ private:
     std::unique_ptr<dw::gl::UniformBuffer> m_global_ubo;
 
     dw::Mesh::Ptr               m_sphere;
-    dw::Mesh::Ptr               m_mesh;
+    dw::Mesh::Ptr               m_lucy;
+    dw::Mesh::Ptr               m_pillar;
     dw::Mesh::Ptr               m_plane;
     std::unique_ptr<dw::Camera> m_main_camera;
 
     GlobalUniforms m_global_uniforms;
 
     // Scene
-    glm::mat4 m_transform;
+    glm::mat4 m_lucy_transform;
+    glm::mat4 m_pillar_transform;
     glm::mat4 m_plane_transform;
     glm::mat4 m_sphere_transform;
 
@@ -534,7 +566,6 @@ private:
     bool  m_debug_gui          = true;
     bool  m_ortho              = true;
     bool  m_visualize_frustum  = false;
-    bool  m_animated_model     = false;
 
     glm::vec3 m_light_target;
     glm::vec3 m_light_direction;
@@ -551,6 +582,7 @@ private:
     float     m_light_far                  = 250.0f;
     float     m_blocker_search_scale       = 1.0f;
     int       m_visualization              = 0;
+    int       m_current_scene              = SCENE_LUCY;
 
     // Camera orientation.
     float m_camera_x;
