@@ -68,8 +68,7 @@ const vec2 Poisson25[25] = vec2[](
     vec2(0.652089, 0.669668),
     vec2(0.773797, 0.345012),
     vec2(0.968871, 0.840449),
-    vec2(0.991882, -0.657338)
-);
+    vec2(0.991882, -0.657338));
 
 const vec2 Poisson32[32] = vec2[](
     vec2(-0.975402, -0.0711386),
@@ -103,8 +102,7 @@ const vec2 Poisson32[32] = vec2[](
     vec2(0.736442, -0.189734),
     vec2(0.843562, 0.357036),
     vec2(0.865413, 0.763726),
-    vec2(0.872005, -0.927)
-);
+    vec2(0.872005, -0.927));
 
 const vec2 Poisson64[64] = vec2[](
     vec2(-0.934812, 0.366741),
@@ -170,8 +168,7 @@ const vec2 Poisson64[64] = vec2[](
     vec2(0.898068, 0.633778),
     vec2(0.92053, -0.355693),
     vec2(0.933348, -0.62981),
-    vec2(0.95294, 0.156896)
-);
+    vec2(0.95294, 0.156896));
 
 const vec2 Poisson100[100] = vec2[](
     vec2(-0.9891574, -0.1059512),
@@ -273,8 +270,7 @@ const vec2 Poisson100[100] = vec2[](
     vec2(0.8621388, -0.3646038),
     vec2(0.9531851, 0.3011991),
     vec2(0.9578334, -0.1584408),
-    vec2(0.9898114, 0.1029227)
-);
+    vec2(0.9898114, 0.1029227));
 
 const vec2 Poisson128[128] = vec2[](
     vec2(-0.9406119, 0.2160107),
@@ -404,8 +400,7 @@ const vec2 Poisson128[128] = vec2[](
     vec2(0.8797691, 0.1284946),
     vec2(0.926309, 0.3576975),
     vec2(0.9608918, -0.03495717),
-    vec2(0.972032, 0.2271516)
-);
+    vec2(0.972032, 0.2271516));
 
 // ------------------------------------------------------------------
 
@@ -451,8 +446,8 @@ vec2 depth_gradient(vec2 uv, float z)
 {
     vec2 dz_duv = vec2(0.0, 0.0);
 
-    vec3 duvdist_dx = dFdx(vec3(uv,z));
-    vec3 duvdist_dy = dFdy(vec3(uv,z));
+    vec3 duvdist_dx = dFdx(vec3(uv, z));
+    vec3 duvdist_dy = dFdy(vec3(uv, z));
 
     dz_duv.x = duvdist_dy.y * duvdist_dx.z;
     dz_duv.x -= duvdist_dx.y * duvdist_dy.z;
@@ -470,18 +465,18 @@ vec2 depth_gradient(vec2 uv, float z)
 
 // Returns average blocker depth in the search region, as well as the number of found blockers.
 // Blockers are defined as shadow-map samples between the surface point and the light.
-void find_blocker(out float accum_blocker_depth, 
-    			  out float num_blockers,
-    			  out float max_blockers,
-    			  vec2 uv,
-    			  float z0,
-    			  float bias,
-    			  float search_region_radius_uv)
+void find_blocker(out float accum_blocker_depth,
+                  out float num_blockers,
+                  out float max_blockers,
+                  vec2      uv,
+                  float     z0,
+                  float     bias,
+                  float     search_region_radius_uv)
 {
     accum_blocker_depth = 0.0;
-    num_blockers = 0.0;
-    max_blockers = float(u_BlockerSearchSamples);
-    float biased_depth = z0 - bias;
+    num_blockers        = 0.0;
+    max_blockers        = float(u_BlockerSearchSamples);
+    float biased_depth  = z0 - bias;
 
     for (int i = 0; i < u_BlockerSearchSamples; ++i)
     {
@@ -497,7 +492,7 @@ void find_blocker(out float accum_blocker_depth,
             offset = Poisson100[i];
         else if (u_BlockerSearchSamples == 128)
             offset = Poisson128[i];
-        
+
         offset *= search_region_radius_uv;
         float shadow_map_depth = texture(s_ShadowMap, uv + offset).r;
 
@@ -532,7 +527,7 @@ float pcf_poisson_filter(vec2 uv, float z0, float bias, float filter_radius_uv)
 
         offset *= filter_radius_uv;
         float shadow_map_depth = texture(s_ShadowMap, uv + offset).r;
-        sum +=  shadow_map_depth < (z0 - bias) ? 0.0 : 1.0;
+        sum += shadow_map_depth < (z0 - bias) ? 0.0 : 1.0;
     }
 
     return sum / float(u_PCFSamples);
@@ -556,7 +551,7 @@ float pcss_filter(vec2 uv, float z, float bias, float z_vs, out float p_r, out v
     {
         debug_color = vec3(0.0);
         return 1.0;
-    } 
+    }
 
     debug_color = vec3(num_blockers / max_blockers);
 
@@ -565,9 +560,9 @@ float pcss_filter(vec2 uv, float z, float bias, float z_vs, out float p_r, out v
     // ------------------------
 
     float avg_blocker_depth_vs = z_clip_to_eye(avg_blocker_depth);
-    float penumbra_radius = penumbra_radius_uv(z_vs, avg_blocker_depth_vs);
-    float filter_radius = project_to_light_uv(penumbra_radius, z_vs);
-    p_r = filter_radius;
+    float penumbra_radius      = penumbra_radius_uv(z_vs, avg_blocker_depth_vs);
+    float filter_radius        = project_to_light_uv(penumbra_radius, z_vs);
+    p_r                        = filter_radius;
 
     // ------------------------
     // STEP 3: filtering
@@ -589,11 +584,11 @@ float shadow_occlussion(vec3 p, out float search_radius, out float p_r, out vec3
     float current_depth = proj_coords.z;
     // check whether current frag pos is in shadow
     float bias = u_LightBias;
- 
+
     vec4 pos_vs = light_view * vec4(p, 1.0);
     pos_vs.xyz /= pos_vs.w;
 
-    if (proj_coords.x > 1.0 || proj_coords.y > 1.0 || proj_coords.z > 1.0 ||proj_coords.x < 0.0 || proj_coords.y < 0.0 || proj_coords.z < 0.0)
+    if (proj_coords.x > 1.0 || proj_coords.y > 1.0 || proj_coords.z > 1.0 || proj_coords.x < 0.0 || proj_coords.y < 0.0 || proj_coords.z < 0.0)
         return 1.0;
 
     return pcss_filter(proj_coords.xy, current_depth, bias, -(pos_vs.z), p_r, debug_color);
@@ -608,7 +603,7 @@ void main()
     float frag_depth = (FS_IN_NDCFragPos.z / FS_IN_NDCFragPos.w) * 0.5 + 0.5;
     float r;
     float p_r;
-    vec3 num_blockers_color;
+    vec3  num_blockers_color;
     float shadow = shadow_occlussion(FS_IN_WorldPos, r, p_r, num_blockers_color);
 
     vec3 L = normalize(-u_Direction);
